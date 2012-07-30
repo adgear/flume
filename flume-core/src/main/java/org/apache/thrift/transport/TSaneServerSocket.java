@@ -132,6 +132,7 @@ public class TSaneServerSocket extends TServerTransport {
     }
     try {
       Socket result = serverSocket_.accept();
+      result.setKeepAlive(true);
       TSocket result2 = new TBufferedSocket(result);
       result2.setTimeout(clientTimeout_);
       return result2;
