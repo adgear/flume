@@ -43,6 +43,7 @@ import com.cloudera.flume.core.extractors.RegexAllExtractor;
 import com.cloudera.flume.core.extractors.SplitExtractor;
 import com.cloudera.flume.core.extractors.DateExtractor;
 import com.cloudera.flume.handlers.avro.AvroEventSink;
+import com.cloudera.flume.handlers.avro.AvroNonBlockingEventSink;
 import com.cloudera.flume.handlers.batch.BatchingDecorator;
 import com.cloudera.flume.handlers.batch.GunzipDecorator;
 import com.cloudera.flume.handlers.batch.GzipDecorator;
@@ -73,6 +74,7 @@ import com.cloudera.flume.handlers.hdfs.DFSEventSink;
 import com.cloudera.flume.handlers.hdfs.EscapedCustomDfsSink;
 import com.cloudera.flume.handlers.hdfs.SeqfileEventSink;
 import com.cloudera.flume.handlers.irc.IrcSink;
+import com.cloudera.flume.handlers.json.JsonNonBlockingEventSink;
 import com.cloudera.flume.handlers.rpc.RpcSink;
 import com.cloudera.flume.handlers.syslog.SyslogTcpSink;
 import com.cloudera.flume.handlers.thrift.ThriftEventSink;
@@ -118,6 +120,7 @@ public class SinkFactoryImpl extends SinkFactory {
       { "autoDFOChain", EventSink.StubSink.builder("autoDFOChain") },
       { "autoE2EChain", EventSink.StubSink.builder("autoE2EChain") },
       { "logicalSink", EventSink.StubSink.builder("logicalSink") },
+      { "logicalNbSink", EventSink.StubSink.builder("logicalNbSink") },
 
       // low level sinks
       { "null", NullSink.builder() },
@@ -139,6 +142,8 @@ public class SinkFactoryImpl extends SinkFactory {
       { "irc", IrcSink.builder() },
       { "thriftSink", ThriftEventSink.builder() },
       { "avroSink", AvroEventSink.builder() },
+      { "avroNbSink", AvroNonBlockingEventSink.builder() },
+      { "jsonNbSink", JsonNonBlockingEventSink.builder() },
       // advanced
       { "failChain", FailoverChainSink.builder() }, // @deprecated
 

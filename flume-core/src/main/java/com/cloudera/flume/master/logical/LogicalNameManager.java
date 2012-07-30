@@ -117,9 +117,15 @@ public class LogicalNameManager {
     String host = stat.host;
     String src = fcd.getSourceConfig();
     CommonTree lsrc = FlumePatterns.findSource(src, "logicalSource");
+    boolean isNonBlocking = false;
     if (lsrc == null) {
-      // no logical sources here, skip
-      return;
+      lsrc = FlumePatterns.findSource(src, "logicalNbSource");
+      
+      if (lsrc == null) {
+        // no logical sources here, skip
+        return;
+      }
+      isNonBlocking = true;
     }
 
     // make sure no two logical nodes on the same host have the same port
@@ -129,8 +135,24 @@ public class LogicalNameManager {
       port++;
     }
 
+
     // / build and populate name Map.
-    pn = new RpcPhysicalNode(host, port);
+    if (!isNonBlocking) {
+        pn = new RpcPhysicalNode(host, port);
+    }
+    else {
+        pn = new RpcPhysicalNode(host, port) {
+                @Override
+                public String getPhysicalSink() {
+                    return "avroNbSink(\"" + host + "\"," + port + ")";
+                }
+
+                @Override
+                public String getPhysicalSource() {
+                    return "avroNbSource(" + port + ")";
+                }
+        };
+    }
     portMaps.put(host, port);
     nameMap.put(ln, pn);
   }

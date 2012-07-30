@@ -83,8 +83,13 @@ public class FlumePatterns {
     Map<String, CommonTree> matches = p.match(lsnkTree);
 
     if (matches == null) {
-      // do nothing,
-      return lsnkTree;
+        p = recursive(var("lsnk", kind("SINK").child(
+            kind("logicalNbSink"))));
+        matches = p.match(lsnkTree);
+        if (matches == null) {
+            // do nothing,
+            return lsnkTree;
+        }
     }
     return matches.get("lsnk");
   }

@@ -76,8 +76,13 @@ public class LogicalConfigurationManager extends
     Map<String, CommonTree> matches = p.match(lsnkTree);
 
     if (matches == null) {
-      // do nothing,
-      return lsnkTree;
+        p = recursive(var("lsnk", kind("DECO").child(
+            kind("SINK").child(kind("logicalNbSink")))));
+        matches = p.match(lsnkTree);
+        if (matches == null) {
+            // do nothing,
+            return lsnkTree;
+        }
     }
 
     CommonTree lsnk = matches.get("lsnk");
@@ -129,11 +134,16 @@ public class LogicalConfigurationManager extends
     Map<String, CommonTree> matches = p.match(lsrcTree);
 
     if (matches == null) {
-      // if was previously a logical source, unregister it.
-      nameMan.setPhysicalNode(ln, null);
+      p = FlumePatterns.source("logicalNbSource");
+      matches = p.match(lsrcTree);
 
-      // do nothing,
-      return lsrcTree;
+      if (matches == null) {
+        // if was previously a logical source, unregister it.
+        nameMan.setPhysicalNode(ln, null);
+
+        // do nothing,
+        return lsrcTree;
+      }
     }
 
     // check logical name manager
@@ -184,7 +194,7 @@ public class LogicalConfigurationManager extends
       String pStr = FlumeSpecGen.genEventSource(pCt);
       return pStr;
     } catch (RecognitionException e) {
-      LOG.error("Problem with physical sink", e);
+      LOG.error("Problem with physical source", e);
     }
     return null;
   }

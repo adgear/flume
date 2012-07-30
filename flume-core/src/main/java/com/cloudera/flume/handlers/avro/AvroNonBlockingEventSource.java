@@ -18,29 +18,31 @@
 
 package com.cloudera.flume.handlers.avro;
 
-import java.io.IOException;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.cloudera.flume.conf.Context;
 import com.cloudera.flume.conf.FlumeConfiguration;
+import com.cloudera.flume.conf.LogicalNodeContext;
 import com.cloudera.flume.conf.SourceFactory.SourceBuilder;
 import com.cloudera.flume.core.Event;
 import com.cloudera.flume.core.EventSource;
 import com.cloudera.flume.reporter.ReportEvent;
 import com.cloudera.util.Clock;
+import com.cloudera.util.Pair;
 import com.google.common.base.Preconditions;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This sets up the port that listens for incoming flumeAvroEvent rpc calls
  * using Avro. This class pretty much mimics ThriftEventSource.
  */
-public class AvroEventSource extends EventSource.Base {
+public class AvroNonBlockingEventSource extends EventSource.Base {
   /*
    * In this version I am setting the following constants same as for the thrift
    * case. Seems like these constants don't really need to depend on the
@@ -52,7 +54,7 @@ public class AvroEventSource extends EventSource.Base {
   final static long MAX_CLOSE_SLEEP = FlumeConfiguration.get()
       .getThriftCloseMaxSleep();
 
-  static final Logger LOG = LoggerFactory.getLogger(AvroEventSource.class);
+  static final Logger LOG = LoggerFactory.getLogger(AvroNonBlockingEventSource.class);
 
   public static final String C_TRUNCATE = "truncate";
   public static final String A_SERVERPORT = "serverPort";
@@ -75,9 +77,9 @@ public class AvroEventSource extends EventSource.Base {
   /**
    * Create a Avro event source listening on port with a qsize buffer.
    */
-  public AvroEventSource(int port, int qsize, boolean truncates) {
+  public AvroNonBlockingEventSource(int port, int qsize, boolean truncates) {
     this.port = port;
-    //this.svr = new FlumeEventAvroServerImpl(port);
+    //this.svr = new FlumeEventAvroServerImpl(logicalName, port);
     this.q = new LinkedBlockingQueue<Event>(qsize);
     this.shouldTruncate = truncates;
   }
@@ -100,14 +102,14 @@ public class AvroEventSource extends EventSource.Base {
   /**
    * This constructor allows the for an arbitrary blocking queue implementation.
    */
-  public AvroEventSource(int port, BlockingQueue<Event> q, boolean truncates) {
+  public AvroNonBlockingEventSource(int port, BlockingQueue<Event> q, boolean truncates) {
     Preconditions.checkNotNull(q);
     this.port = port;
     this.q = q;
     this.shouldTruncate = truncates;
   }
 
-  public AvroEventSource(int port) {
+  public AvroNonBlockingEventSource(int port) {
     this(port, DEFAULT_QUEUE_SIZE, false);
   }
 
@@ -144,7 +146,7 @@ public class AvroEventSource extends EventSource.Base {
         super.append(evt);
       }
     };
-    LOG.info(String.format("Avro listening server on port %d...", port));
+    LOG.info(String.format("AvroNonBlockingEventSource listening server on port %d...", port));
     this.svr.start();
     this.closed = false;
   }
@@ -224,14 +226,26 @@ public class AvroEventSource extends EventSource.Base {
       @Override
       public EventSource build(Context ctx, String... argv) {
         Preconditions.checkArgument(argv.length == 1,
-            "usage: avroSource(port{," + C_TRUNCATE + "=false})");
+            "usage: avroNbSource(port{," + C_TRUNCATE + "=false})");
         int port = Integer.parseInt(argv[0]);
 
         String val = ctx.getObj(C_TRUNCATE, String.class);
         boolean truncates = (val == null) ? false : Boolean.parseBoolean(val);
 
-        return new AvroEventSource(port, DEFAULT_QUEUE_SIZE, truncates);
+        return new AvroNonBlockingEventSource(port, DEFAULT_QUEUE_SIZE, truncates);
       }
     };
   }
+  
+  /**
+   * This is a special function used by the SourceFactory to pull in this class
+   * as a plugin source.
+   */
+  public static List<Pair<String, SourceBuilder>> getSourceBuilders() {
+    List<Pair<String, SourceBuilder>> builders =
+      new ArrayList<Pair<String, SourceBuilder>>();
+    builders.add(new Pair<String, SourceBuilder>("avroNbSource", builder()));
+    return builders;
+  }
+
 }

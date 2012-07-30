@@ -18,22 +18,37 @@
 package com.cloudera.flume.handlers.avro;
 
 import java.io.IOException;
-
+import java.net.InetSocketAddress;
+import java.util.concurrent.*;
 import org.apache.avro.AvroRemoteException;
 import org.apache.avro.ipc.HttpServer;
+import org.apache.avro.ipc.Server;
 import org.apache.avro.ipc.specific.SpecificResponder;
+import org.jboss.netty.channel.ChannelFactory;
+import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
+import org.jboss.netty.util.ThreadNameDeterminer;
+import org.jboss.netty.util.ThreadRenamingRunnable;
 /**
  * This implements the AvroEventServer.
  */
 public class FlumeEventAvroServerImpl implements FlumeEventAvroServer {
-  private HttpServer http;
+  private Server server;
   private final int port;
+  private final boolean blocking;
 
   /**
    * This just sets the port for this AvroServer
    */
-  public FlumeEventAvroServerImpl(int port) {
+  public FlumeEventAvroServerImpl(int port, boolean blocking) {
     this.port = port;
+    this.blocking = blocking;
+  }
+  
+  /**
+   * This just sets the port for this AvroServer
+   */
+  public FlumeEventAvroServerImpl(int port) {
+    this(port, false);
   }
 
   /**
@@ -42,8 +57,26 @@ public class FlumeEventAvroServerImpl implements FlumeEventAvroServer {
   public void start() throws IOException {
     SpecificResponder res = new SpecificResponder(FlumeEventAvroServer.class,
         this);
-    this.http = new HttpServer(res, port);
-    this.http.start();
+    if (blocking) {
+        this.server = new HttpServer(res, port);
+    }
+    else {
+        ThreadRenamingRunnable.setThreadNameDeterminer(ThreadNameDeterminer.CURRENT);
+        ExecutorService bossExecutorService = new ThreadPoolExecutor(1, Integer.MAX_VALUE, 60, TimeUnit.SECONDS, 
+				new SynchronousQueue<Runnable>(),
+				new AvroNettyTransceiver.NettyTransceiverThreadFactory("Avro " + FlumeEventAvroServerImpl.class.getSimpleName() + " Boss"));
+		
+		ExecutorService workerExecutorService = new ThreadPoolExecutor(1, Integer.MAX_VALUE, 60, TimeUnit.SECONDS, 
+				new SynchronousQueue<Runnable>(),
+				new AvroNettyTransceiver.NettyTransceiverThreadFactory("Avro " + FlumeEventAvroServerImpl.class.getSimpleName() + " I/O Worker"));
+		
+		ChannelFactory factory = new NioServerSocketChannelFactory(
+				bossExecutorService, 
+		        workerExecutorService);
+        
+        this.server = new AvroNettyServer(res, new InetSocketAddress(port), factory);
+    }
+    this.server.start();
   }
 
   @Override
@@ -54,6 +87,8 @@ public class FlumeEventAvroServerImpl implements FlumeEventAvroServer {
    * Stops the FlumeEventAvroServer, called only from the server.
    */
   public void close() throws AvroRemoteException {
-    http.close();
+    if (server != null) {
+        server.close();
+    }
   }
 }
