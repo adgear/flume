@@ -32,6 +32,7 @@ tokens {
   DECO;
   SOURCE;
   MULTI;
+  ROUND;
   HEX;
   OCT;
   DEC;
@@ -118,6 +119,7 @@ singleSink	:	Identifier args? 	-> ^(SINK Identifier args?);
 sinkEof		:	simpleSink EOF;
 
 simpleSink	:	'[' multiSink ']'  	-> ^(MULTI multiSink) 
+        |   '#' multiSink '#' -> ^(ROUND multiSink)
         |   singleSink simpleSink?  -> ^(DECO singleSink simpleSink?) 
 		|	'{' decoratedSink '}'	-> ^(DECO decoratedSink)
 		|	'<' failoverSink '>'	-> ^(BACKUP failoverSink)

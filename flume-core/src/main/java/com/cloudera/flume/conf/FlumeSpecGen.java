@@ -147,6 +147,16 @@ public class FlumeSpecGen {
 
       return genArgs(snks, "[", ",", "]");
 
+    case ROUND:
+      List<CommonTree> roundRobinElems = (List<CommonTree>) t.getChildren();
+      List<String> roundRobinSnks = new ArrayList<String>();
+      for (CommonTree tr : roundRobinElems) {
+        String snk = genEventSink(tr);
+        roundRobinSnks.add(snk);
+      }
+
+      return genArgs(roundRobinSnks, "#", ",", "#");
+
     case DECO: {
       List<CommonTree> decoNodes = (List<CommonTree>) t.getChildren();
       Preconditions.checkArgument(decoNodes.size() == 2

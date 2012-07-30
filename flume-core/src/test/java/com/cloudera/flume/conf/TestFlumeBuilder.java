@@ -139,6 +139,26 @@ public class TestFlumeBuilder implements ExampleData {
   }
 
   @Test
+  public void testRoundRobinSink() throws IOException, FlumeSpecException {
+    //String multi = "# console , counter(\"count\") #";
+    String multi = "# agentBESink(\"localhost\", 35854), agentBESink(\"localhost\", 35855) #";
+    FlumeBuilder.buildSink(new Context(), multi);
+  }
+
+  @Test
+  public void testRoundRobinSinkBad() throws IOException, FlumeSpecException {
+    try {
+      String multi = "# console , unpossiblesink(\"count\") #";
+      FlumeBuilder.buildSink(new Context(), multi);
+    } catch (FlumeSpecException e) {
+      System.out.println(e);
+      return;
+    }
+    fail("should have thrown exception");
+  }
+
+
+  @Test
   public void testDecorated() throws IOException, FlumeSpecException {
     String decorated = "{ intervalSampler(5) =>  console }";
     FlumeBuilder.buildSink(new Context(), decorated);

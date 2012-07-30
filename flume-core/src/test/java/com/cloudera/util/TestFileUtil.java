@@ -19,6 +19,7 @@ package com.cloudera.util;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.regex.Pattern;
 
 import junit.framework.TestCase;
 
@@ -34,7 +35,7 @@ public class TestFileUtil extends TestCase {
   public void testCreateTempFile() throws IOException {
     File f = FileUtil.createTempFile("foo", ".bar");
     f.deleteOnExit();
-    String matchPat = FileUtil.getBaseDir() + ".*foo.*\\.bar";
+    String matchPat = Pattern.quote(FileUtil.getBaseDir().toString()) + ".*foo.*\\.bar";
     assertTrue(f.getAbsolutePath().matches(matchPat));
   }
 

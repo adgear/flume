@@ -224,6 +224,14 @@ public class TestParser implements ExampleData {
     assertEquals(
         "(MULTI (DECO (SINK text (BOOL true))) (DECO (SINK tail (STRING \"somthingelse\"))))",
         toTree(o4));
+
+    String s5 = "#text(true) , tail(\"somthingelse\") #";
+    Object o5 = FlumeBuilder.parseSink(s5);
+    LOG.info(s5);
+    LOG.info(toTree(o5));
+    assertEquals(
+        "(ROUND (DECO (SINK text (BOOL true))) (DECO (SINK tail (STRING \"somthingelse\"))))",
+        toTree(o5));
   }
 
   @Test

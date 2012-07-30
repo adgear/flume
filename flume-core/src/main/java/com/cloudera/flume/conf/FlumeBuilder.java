@@ -42,6 +42,7 @@ import com.cloudera.flume.core.EventSink;
 import com.cloudera.flume.core.EventSinkDecorator;
 import com.cloudera.flume.core.EventSource;
 import com.cloudera.flume.core.FanOutSink;
+import com.cloudera.flume.core.RoundRobinSink;
 import com.cloudera.flume.handlers.rolling.RollSink;
 import com.cloudera.flume.handlers.text.FormatFactory;
 import com.cloudera.flume.handlers.text.output.OutputFormat;
@@ -94,7 +95,7 @@ public class FlumeBuilder {
     FUNC, // function node
     SINK, SOURCE, // sink or source
     KWARG, // kwarg support
-    MULTI, DECO, BACKUP, ROLL, GEN, FAILCHAIN, // compound sinks
+    MULTI, ROUND, DECO, BACKUP, ROLL, GEN, FAILCHAIN, // compound sinks
     NODE, // combination of sink and source
   };
 
@@ -514,6 +515,21 @@ public class FlumeBuilder {
           snks.add(s);
         }
         FanOutSink<EventSink> sink = new FanOutSink<EventSink>(snks);
+        return sink;
+      } catch (FlumeSpecException ife) {
+        // TODO (jon) do something if there was an intermediate failure
+        throw ife;
+      }
+    }
+    case ROUND: {
+      List<CommonTree> elems = (List<CommonTree>) t.getChildren();
+      List<EventSink> snks = new ArrayList<EventSink>();
+      try {
+        for (CommonTree tr : elems) {
+          EventSink s = buildEventSink(context, tr, sinkFactory);
+          snks.add(s);
+        }
+        RoundRobinSink<EventSink> sink = new RoundRobinSink<EventSink>(snks);
         return sink;
       } catch (FlumeSpecException ife) {
         // TODO (jon) do something if there was an intermediate failure
