@@ -8,7 +8,7 @@
   <id>bin</id>
 
   <formats>
-    <format>zip</format>
+    <format>dir</format>
   </formats>
   <includeBaseDirectory>true</includeBaseDirectory>
   <baseDirectory>flume-${project.version}</baseDirectory>
