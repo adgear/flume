@@ -31,7 +31,6 @@
             <inherited>false</inherited>
             <configuration>
               <descriptors>
-                <descriptor>src/main/assembly/dist.xml</descriptor>
                 <descriptor>src/main/assembly/dist-bin.xml</descriptor>
               </descriptors>
             </configuration>

@@ -65,8 +65,12 @@ CMDPATH=`dirname $CMDPATH`
 
 FLUME=$CMDPATH/bin/flume
 
-MASTERPID=${FLUME_PID_DIR:="/tmp"}/flume-$FLUME_IDENT_STRING-master.pid
-NODEPID=${FLUME_PID_DIR:="/tmp"}/flume-$FLUME_IDENT_STRING-node.pid
+if [ "$FLUME_IDENT_STRING" = "" ]; then
+  export FLUME_IDENT_STRING="`id -nu`"
+fi
+
+MASTERPID=${FLUME_PID_DIR:="/var/run/flume"}/flume-$FLUME_IDENT_STRING-master.pid
+NODEPID=${FLUME_PID_DIR:="/var/run/flume"}/flume-$FLUME_IDENT_STRING-node.pid
 
 CMD="$1"
 if [ -z "$CMD" ]; then
@@ -174,8 +178,7 @@ if [ "$cygwin" == false ] ; then
       break
   done
 
-  append_jars_onto_classpath "$CMDPATH/lib"
-  append_jars_onto_classpath "$CMDPATH/libtest"
+  append_jars_onto_classpath "/usr/share/flume/lib"
 
   CLASSPATH="${CLASSPATH}:$JAVA_HOME/lib/tools.jar"
 

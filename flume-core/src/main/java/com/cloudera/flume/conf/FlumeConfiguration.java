@@ -1035,24 +1035,14 @@ public class FlumeConfiguration extends Configuration {
    * Returns the webapp root for the master.
    */
   public String getMasterWebappRoot() {
-    String home = getFlumeHome();
-    if (home == null) {
-      home = ".";
-    }
-    return home + File.separator
-        + get(WEBAPP_ROOT_MASTER, "webapps/flumemaster.war");
+     return "/usr/share/flume/webapps/flumemaster.war";
   }
 
   /**
    * Returns the webapp root for the node (i.e. agent or collector).
    */
   public String getNodeWebappRoot() {
-    String home = getFlumeHome();
-    if (home == null) {
-      home = ".";
-    }
-    return home + File.separator
-        + get(WEBAPP_ROOT_NODE, "webapps/flumeagent.war");
+     return "/usr/share/flume/webapps/flumeagent.war";
   }
 
   /**
