@@ -32,7 +32,7 @@ import org.jboss.netty.util.ThreadRenamingRunnable;
  * This is a sink that sends events to a remote host/port using JSON.
  */
 public class JsonNonBlockingEventSink extends EventSink.Base {
-	
+
 	static final Logger LOG = LoggerFactory.getLogger(JsonNonBlockingEventSink.class);
 
 	final public static String A_SERVERHOST = "serverHost";
@@ -61,7 +61,7 @@ public class JsonNonBlockingEventSink extends EventSink.Base {
 		this.ensureInitialized();
 		try {
 			jof.format(os, e);
-			
+
 			transport.writeData(os.toByteArray());
 
 			os.reset();
@@ -78,7 +78,7 @@ public class JsonNonBlockingEventSink extends EventSink.Base {
 	}
 
 	private void ensureInitialized() throws IOException {
-		if (transport == null || jof == null || os == null) {
+		if (transport == null || jof == null || os == null || !transport.isConnected()) {
 			throw new IOException(
 					"MasterRPC called while not connected to master");
 		}
@@ -90,23 +90,30 @@ public class JsonNonBlockingEventSink extends EventSink.Base {
 	@Override
 	public void open() throws IOException {
         ThreadRenamingRunnable.setThreadNameDeterminer(ThreadNameDeterminer.CURRENT);
-        ExecutorService bossExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS, 
-				new LinkedBlockingQueue<Runnable>(10000), 
+        ExecutorService bossExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS,
+				new LinkedBlockingQueue<Runnable>(10000),
 				new JsonNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Json " + JsonNettyTransceiver.class.getSimpleName() + " Boss"),
 				new ThreadPoolExecutor.DiscardPolicy());
-		
-		ExecutorService workerExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS, 
-				new LinkedBlockingQueue<Runnable>(10000), 
+
+		ExecutorService workerExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS,
+				new LinkedBlockingQueue<Runnable>(10000),
 				new JsonNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Json " + JsonNettyTransceiver.class.getSimpleName() + " I/O Worker"),
 				new ThreadPoolExecutor.DiscardPolicy());
-		
+
 		ChannelFactory factory = new NioClientSocketChannelFactory(
-				bossExecutorService, 
+				bossExecutorService,
 		        workerExecutorService);
-        
-		transport = new JsonNettyTransceiver(new InetSocketAddress(host, port), factory);
-		jof = new JsonOutputFormat(Charset.forName("UTF-8"));
-		os = new ByteArrayOutputStream();
+
+        try {
+            transport = new JsonNettyTransceiver(new InetSocketAddress(host, port), factory);
+            jof = new JsonOutputFormat(Charset.forName("UTF-8"));
+            os = new ByteArrayOutputStream();
+		} catch (Exception e) {
+			factory.releaseExternalResources();
+			throw new IOException("Failed to open Json event sink at " + host
+					+ ":" + port + " : " + e.getMessage());
+		}
+
 		LOG.info("[logicalNode " + this.logicalName + "] to " + host + ":" + port + " opened");
 	}
 
@@ -118,9 +125,9 @@ public class JsonNonBlockingEventSink extends EventSink.Base {
 		if (transport != null) {
 			transport.close();
 			transport = null;
-			
+
 			jof = null;
-			
+
 			if (os != null) {
 				os.close();
 				os = null;
