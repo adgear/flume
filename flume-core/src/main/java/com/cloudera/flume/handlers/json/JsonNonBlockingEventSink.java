@@ -78,7 +78,7 @@ public class JsonNonBlockingEventSink extends EventSink.Base {
 	}
 
 	private void ensureInitialized() throws IOException {
-		if (transport == null || jof == null || os == null || !transport.isConnected()) {
+		if (transport == null || jof == null || os == null) {
 			throw new IOException(
 					"MasterRPC called while not connected to master");
 		}
