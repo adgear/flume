@@ -55,9 +55,9 @@ import org.slf4j.LoggerFactory;
 public class AvroNettyTransceiver extends Transceiver {
 
     /**
-     * If not specified, the default connection timeout will be used (10 sec).
+     * If not specified, the default connection timeout will be used (60 sec).
      */
-    public static final long DEFAULT_CONNECTION_TIMEOUT_MILLIS = 10 * 1000L;
+    public static final long DEFAULT_CONNECTION_TIMEOUT_MILLIS = 60 * 1000L;
     public static final String NETTY_CONNECT_TIMEOUT_OPTION =
             "connectTimeoutMillis";
     public static final String NETTY_TCP_NODELAY_OPTION = "tcpNoDelay";
