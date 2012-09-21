@@ -42,7 +42,12 @@ import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.jboss.netty.handler.codec.http.DefaultHttpChunk;
+import org.jboss.netty.handler.codec.http.DefaultHttpRequest;
 import org.jboss.netty.handler.codec.http.HttpClientCodec;
+import org.jboss.netty.handler.codec.http.HttpHeaders;
+import org.jboss.netty.handler.codec.http.HttpMethod;
+import org.jboss.netty.handler.codec.http.HttpRequest;
+import org.jboss.netty.handler.codec.http.HttpVersion;
 import org.jboss.netty.handler.stream.ChunkedWriteHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,9 +62,9 @@ import org.slf4j.LoggerFactory;
 public class JsonNettyTransceiver {
 
     /**
-     * If not specified, the default connection timeout will be used (60 sec).
+     * If not specified, the default connection timeout will be used (10 sec).
      */
-    public static final long DEFAULT_CONNECTION_TIMEOUT_MILLIS = 60 * 1000L;
+    public static final long DEFAULT_CONNECTION_TIMEOUT_MILLIS = 10 * 1000L;
     public static final String NETTY_CONNECT_TIMEOUT_OPTION = "connectTimeoutMillis";
     public static final String NETTY_TCP_NODELAY_OPTION = "tcpNoDelay";
     public static final boolean DEFAULT_TCP_NODELAY_VALUE = true;
@@ -288,48 +293,49 @@ public class JsonNettyTransceiver {
                 && channel.isConnected();
     }
 
-    /**
-     * Gets the Netty channel. If the channel is not connected, first attempts
+    /** Gets the Netty channel. If the channel is not connected, first attempts
      * to connect. NOTE: The stateLock read lock *must* be acquired before
      * calling this method.
      *
      * @return the Netty channel
-     * @throws IOException if an error occurs connecting the channel.
+     * @throws IOException
+     *             if an error occurs connecting the channel.
      */
     private Channel getChannel() throws IOException {
-        if (!isChannelReady(channel)) {
-            // Need to reconnect
-            // Upgrade to write lock
-            stateLock.readLock().unlock();
-            stateLock.writeLock().lock();
-            try {
-                if (!isChannelReady(channel)) {
-                    synchronized (channelFutureLock) {
-                        if (!stopping) {
-                            LOG.debug("Connecting to " + remoteAddr);
-                            channelFuture = bootstrap.connect(remoteAddr);
-                        }
-                    }
-                    if (channelFuture != null) {
-                        channelFuture.awaitUninterruptibly(connectTimeoutMillis);
+            if (!isChannelReady(channel)) {
+                    // Need to reconnect
+                    // Upgrade to write lock
+                    stateLock.readLock().unlock();
+                    stateLock.writeLock().lock();
+                    try {
+                            if (!isChannelReady(channel)) {
+                                    LOG.debug("Connecting to " + remoteAddr);
+                                    ChannelFuture channelFuture = bootstrap.connect(remoteAddr);
+                                    channelFuture.awaitUninterruptibly(connectTimeoutMillis);
+                                    if (!channelFuture.isSuccess()) {
+                                            throw new IOException("Error connecting to "
+                                                            + remoteAddr, channelFuture.getCause());
+                                    }
+                                    channel = channelFuture.getChannel();
 
-                        synchronized (channelFutureLock) {
-                            if (!channelFuture.isSuccess()) {
-                                throw new IOException("Error connecting to " + remoteAddr,
-                                        channelFuture.getCause());
+                 HttpRequest nettyRequest = new DefaultHttpRequest(
+                         HttpVersion.HTTP_1_1, HttpMethod.POST, "/");
+                 nettyRequest.setHeader(HttpHeaders.Names.HOST, remoteAddr.getHostName() + ":" + remoteAddr.getPort());
+                 nettyRequest.setHeader(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
+                 nettyRequest.setHeader(HttpHeaders.Names.ACCEPT, "*/*");
+                 nettyRequest.setHeader(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=utf-8");
+                 nettyRequest.setHeader(HttpHeaders.Names.TRANSFER_ENCODING, HttpHeaders.Values.CHUNKED);
+                 nettyRequest.setChunked(true);
+
+                 getChannel().write(nettyRequest);
                             }
-                            channel = channelFuture.getChannel();
-                            channelFuture = null;
-                        }
+                    } finally {
+                            // Downgrade to read lock:
+                            stateLock.readLock().lock();
+                            stateLock.writeLock().unlock();
                     }
-                }
-            } finally {
-                // Downgrade to read lock:
-                stateLock.readLock().lock();
-                stateLock.writeLock().unlock();
             }
-        }
-        return channel;
+            return channel;
     }
 
     /**
