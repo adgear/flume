@@ -65,6 +65,7 @@ public class AvroNonBlockingEventSource extends EventSource.Base {
   // BytesIN in here (unlike the Thrift version) corresponds to the total bytes
   // of Event.body shipped.
   public static final String A_BYTES_IN = "bytesIn";
+  String logicalName;
   final int port;
   private FlumeEventAvroServerImpl svr;
   final BlockingQueue<Event> q;
@@ -77,7 +78,8 @@ public class AvroNonBlockingEventSource extends EventSource.Base {
   /**
    * Create a Avro event source listening on port with a qsize buffer.
    */
-  public AvroNonBlockingEventSource(int port, int qsize, boolean truncates) {
+  public AvroNonBlockingEventSource(String logicalName, int port, int qsize, boolean truncates) {
+    this.logicalName = logicalName;
     this.port = port;
     //this.svr = new FlumeEventAvroServerImpl(logicalName, port);
     this.q = new LinkedBlockingQueue<Event>(qsize);
@@ -102,15 +104,16 @@ public class AvroNonBlockingEventSource extends EventSource.Base {
   /**
    * This constructor allows the for an arbitrary blocking queue implementation.
    */
-  public AvroNonBlockingEventSource(int port, BlockingQueue<Event> q, boolean truncates) {
+  public AvroNonBlockingEventSource(String logicalName, int port, BlockingQueue<Event> q, boolean truncates) {
     Preconditions.checkNotNull(q);
+    this.logicalName = logicalName;
     this.port = port;
     this.q = q;
     this.shouldTruncate = truncates;
   }
 
-  public AvroNonBlockingEventSource(int port) {
-    this(port, DEFAULT_QUEUE_SIZE, false);
+  public AvroNonBlockingEventSource(String logicalName, int port) {
+    this(logicalName, port, DEFAULT_QUEUE_SIZE, false);
   }
 
   /**
@@ -133,7 +136,7 @@ public class AvroNonBlockingEventSource extends EventSource.Base {
   @Override
   synchronized public void open() throws IOException {
 
-    this.svr = new FlumeEventAvroServerImpl(port) {
+    this.svr = new FlumeEventAvroServerImpl(logicalName, port) {
       @Override
       public void append(AvroFlumeEvent evt) {
         // convert AvroEvent evt -> e
@@ -146,7 +149,7 @@ public class AvroNonBlockingEventSource extends EventSource.Base {
         super.append(evt);
       }
     };
-    LOG.info(String.format("AvroNonBlockingEventSource listening server on port %d...", port));
+    LOG.info(String.format("AvroNonBlockingEventSource listening server on port %d for [%s]...", port, logicalName));
     this.svr.start();
     this.closed = false;
   }
@@ -232,11 +235,11 @@ public class AvroNonBlockingEventSource extends EventSource.Base {
         String val = ctx.getObj(C_TRUNCATE, String.class);
         boolean truncates = (val == null) ? false : Boolean.parseBoolean(val);
 
-        return new AvroNonBlockingEventSource(port, DEFAULT_QUEUE_SIZE, truncates);
+        return new AvroNonBlockingEventSource(ctx.getValue(LogicalNodeContext.C_LOGICAL), port, DEFAULT_QUEUE_SIZE, truncates);
       }
     };
   }
-  
+
   /**
    * This is a special function used by the SourceFactory to pull in this class
    * as a plugin source.

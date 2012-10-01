@@ -33,22 +33,24 @@ import org.jboss.netty.util.ThreadRenamingRunnable;
  */
 public class FlumeEventAvroServerImpl implements FlumeEventAvroServer {
   private Server server;
+  private final String logicalName;
   private final int port;
   private final boolean blocking;
 
   /**
    * This just sets the port for this AvroServer
    */
-  public FlumeEventAvroServerImpl(int port, boolean blocking) {
+  public FlumeEventAvroServerImpl(String logicalName, int port, boolean blocking) {
+    this.logicalName = logicalName;
     this.port = port;
     this.blocking = blocking;
   }
-  
+
   /**
    * This just sets the port for this AvroServer
    */
-  public FlumeEventAvroServerImpl(int port) {
-    this(port, false);
+  public FlumeEventAvroServerImpl(String logicalName, int port) {
+    this(logicalName, port, false);
   }
 
   /**
@@ -62,18 +64,18 @@ public class FlumeEventAvroServerImpl implements FlumeEventAvroServer {
     }
     else {
         ThreadRenamingRunnable.setThreadNameDeterminer(ThreadNameDeterminer.CURRENT);
-        ExecutorService bossExecutorService = new ThreadPoolExecutor(1, Integer.MAX_VALUE, 60, TimeUnit.SECONDS, 
+        ExecutorService bossExecutorService = new ThreadPoolExecutor(1, Integer.MAX_VALUE, 60, TimeUnit.SECONDS,
 				new SynchronousQueue<Runnable>(),
-				new AvroNettyTransceiver.NettyTransceiverThreadFactory("Avro " + FlumeEventAvroServerImpl.class.getSimpleName() + " Boss"));
-		
-		ExecutorService workerExecutorService = new ThreadPoolExecutor(1, Integer.MAX_VALUE, 60, TimeUnit.SECONDS, 
+				new AvroNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Avro " + FlumeEventAvroServerImpl.class.getSimpleName() + " Boss"));
+
+		ExecutorService workerExecutorService = new ThreadPoolExecutor(1, Integer.MAX_VALUE, 60, TimeUnit.SECONDS,
 				new SynchronousQueue<Runnable>(),
-				new AvroNettyTransceiver.NettyTransceiverThreadFactory("Avro " + FlumeEventAvroServerImpl.class.getSimpleName() + " I/O Worker"));
-		
+				new AvroNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Avro " + FlumeEventAvroServerImpl.class.getSimpleName() + " I/O Worker"));
+
 		ChannelFactory factory = new NioServerSocketChannelFactory(
-				bossExecutorService, 
+				bossExecutorService,
 		        workerExecutorService);
-        
+
         this.server = new AvroNettyServer(res, new InetSocketAddress(port), factory);
     }
     this.server.start();

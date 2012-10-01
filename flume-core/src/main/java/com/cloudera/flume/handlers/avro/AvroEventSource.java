@@ -131,7 +131,7 @@ public class AvroEventSource extends EventSource.Base {
   @Override
   synchronized public void open() throws IOException {
 
-    this.svr = new FlumeEventAvroServerImpl(port) {
+    this.svr = new FlumeEventAvroServerImpl("", port) {
       @Override
       public void append(AvroFlumeEvent evt) {
         // convert AvroEvent evt -> e
