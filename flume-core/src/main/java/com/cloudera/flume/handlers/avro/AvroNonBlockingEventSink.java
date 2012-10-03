@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * This is a sink that sends events to a remote host/port using Avro.
  */
 public class AvroNonBlockingEventSink extends EventSink.Base {
-	
+
 	static final Logger LOG = LoggerFactory.getLogger(AvroNonBlockingEventSink.class);
 
 	final public static String A_SERVERHOST = "serverHost";
@@ -72,9 +72,9 @@ public class AvroNonBlockingEventSink extends EventSink.Base {
 	}
 
 	private void ensureInitialized() throws IOException {
-		if (this.avroClient == null || this.transport == null) {
+		if (this.avroClient == null || this.transport == null || !this.transport.isConnected()) {
 			throw new IOException(
-					"MasterRPC called while not connected to master");
+					"Append called while not connected to sink");
 		}
 	}
 
@@ -84,20 +84,20 @@ public class AvroNonBlockingEventSink extends EventSink.Base {
 	@Override
 	public void open() throws IOException {
         ThreadRenamingRunnable.setThreadNameDeterminer(ThreadNameDeterminer.CURRENT);
-		ExecutorService bossExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS, 
-				new LinkedBlockingQueue<Runnable>(10000), 
+		ExecutorService bossExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS,
+				new LinkedBlockingQueue<Runnable>(10000),
 				new AvroNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Avro " + AvroNettyTransceiver.class.getSimpleName() + " Boss"),
 				new ThreadPoolExecutor.DiscardPolicy());
-		
-		ExecutorService workerExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS, 
-				new LinkedBlockingQueue<Runnable>(10000), 
+
+		ExecutorService workerExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS,
+				new LinkedBlockingQueue<Runnable>(10000),
 				new AvroNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Avro " + AvroNettyTransceiver.class.getSimpleName() + " I/O Worker"),
 				new ThreadPoolExecutor.DiscardPolicy());
 
 		ChannelFactory factory = new NioClientSocketChannelFactory(
-				bossExecutorService, 
+				bossExecutorService,
 		        workerExecutorService);
-		
+
 		try {
 			transport = new AvroNettyTransceiver(new InetSocketAddress(host,
 					port), factory);
