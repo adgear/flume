@@ -17,6 +17,9 @@
  */
 package com.cloudera.flume.core;
 
+import com.cloudera.flume.reporter.ReportEvent;
+import com.cloudera.flume.reporter.Reportable;
+import com.cloudera.util.MultipleIOException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,15 +30,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import com.cloudera.flume.reporter.ReportEvent;
-import com.cloudera.flume.reporter.Reportable;
-import com.cloudera.util.MultipleIOException;
-
 /**
  * This class composes many sinks into a single sink. This version is
  * synchronous and the order event sinks are added controls the order they are
  * written.
- * 
+ *
  * TODO (jon) think about the semantics of partial failures in the multi sink.
  */
 public class FanOutSink<S extends EventSink> extends EventSink.Base {
@@ -122,11 +121,8 @@ public class FanOutSink<S extends EventSink> extends EventSink.Base {
 
     for (S snk : sinks) {
       try {
-        // Make a copy of the event for each branch of the fan out. This makes
-        // the events independently modifiable down each fanout path.
-        Event e2 = new EventImpl(e);
-        snk.append(e2);
-        super.append(e2);
+        snk.append(e);
+        super.append(e);
       } catch (IOException ioe) {
         exs.add(ioe);
       }

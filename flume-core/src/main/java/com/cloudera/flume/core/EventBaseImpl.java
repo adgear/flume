@@ -17,20 +17,18 @@
  */
 package com.cloudera.flume.core;
 
+import com.google.common.base.Preconditions;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
-
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.commons.lang.StringEscapeUtils;
-
-import com.google.common.base.Preconditions;
 
 /**
  * This provides a single implementation of a fields map that can be used by
  * subclasses and adaptors
- * 
+ *
  * TODO (jon) Consider changing EventImpl to put all fields into Map (depends on
  * cost)
  */
@@ -38,7 +36,7 @@ abstract public class EventBaseImpl extends Event {
   protected Map<String, byte[]> fields;
 
   protected EventBaseImpl() {
-    this.fields = new HashMap<String, byte[]>();
+    this.fields = new ConcurrentHashMap<String, byte[]>();
   }
 
   /**
@@ -79,7 +77,7 @@ abstract public class EventBaseImpl extends Event {
     return getHost() + " [" + getPriority().toString() + " "
         + new Date(getTimestamp()) + "] " + mbody;
   }
-  
+
   @Override
   public void hierarchicalMerge(String prefix, Event e) {
     Preconditions.checkNotNull(e, "hierarchicalMerge called with null event");
@@ -94,7 +92,7 @@ abstract public class EventBaseImpl extends Event {
         set(key, val);
       }
     }
-  }    
+  }
 
   @Override
   public void merge(Event e) {
@@ -108,7 +106,7 @@ abstract public class EventBaseImpl extends Event {
       if (val != null) {
         set(field.getKey(), val);
       }
-    }    
+    }
   }
 
 }
