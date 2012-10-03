@@ -78,7 +78,7 @@ public class JsonNonBlockingEventSink extends EventSink.Base {
 	}
 
 	private void ensureInitialized() throws IOException {
-		if (transport == null || !this.transport.isConnected() || jof == null || os == null) {
+		if (transport == null || jof == null || os == null) {
 			throw new IOException(
 					"Append called while not connected to sink");
 		}

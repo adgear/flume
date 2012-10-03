@@ -72,7 +72,7 @@ public class AvroNonBlockingEventSink extends EventSink.Base {
 	}
 
 	private void ensureInitialized() throws IOException {
-		if (this.avroClient == null || this.transport == null || !this.transport.isConnected()) {
+		if (this.avroClient == null || this.transport == null) {
 			throw new IOException(
 					"Append called while not connected to sink");
 		}
