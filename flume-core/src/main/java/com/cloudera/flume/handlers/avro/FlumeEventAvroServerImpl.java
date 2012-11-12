@@ -76,7 +76,7 @@ public class FlumeEventAvroServerImpl implements FlumeEventAvroServer {
 				bossExecutorService,
 		        workerExecutorService);
 
-        this.server = new AvroNettyServer(res, new InetSocketAddress(port), factory);
+        this.server = new AvroNettyServer(res, new InetSocketAddress(port), factory, logicalName);
     }
     this.server.start();
   }

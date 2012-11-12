@@ -50,16 +50,18 @@ public class AvroNettyServer implements Server {
       "avro-netty-server");
   private final ChannelFactory channelFactory;
   private final CountDownLatch closed = new CountDownLatch(1);
-  private final ExecutionHandler executionHandler;            
-  
-  public AvroNettyServer(Responder responder, InetSocketAddress addr) {
+  private final ExecutionHandler executionHandler;
+
+  private final String logicalName;
+
+  public AvroNettyServer(Responder responder, InetSocketAddress addr, String logicalName) {
     this(responder, addr, new NioServerSocketChannelFactory
-         (Executors.newCachedThreadPool(), Executors.newCachedThreadPool()));
+         (Executors.newCachedThreadPool(), Executors.newCachedThreadPool()), logicalName);
   }
-  
+
   public AvroNettyServer(Responder responder, InetSocketAddress addr,
-                     ChannelFactory channelFactory) {
-      this(responder, addr, channelFactory, null);
+                     ChannelFactory channelFactory, String logicalName) {
+      this(responder, addr, channelFactory, null, logicalName);
   }
 
     /**
@@ -70,10 +72,11 @@ public class AvroNettyServer implements Server {
      *                         ExecutionHandler javadoc).
      */
   public AvroNettyServer(Responder responder, InetSocketAddress addr,
-                     ChannelFactory channelFactory, final ExecutionHandler executionHandler) {
+                     ChannelFactory channelFactory, final ExecutionHandler executionHandler, final String logicalName) {
       this.responder = responder;
       this.channelFactory = channelFactory;
       this.executionHandler = executionHandler;
+      this.logicalName = logicalName;
       ServerBootstrap bootstrap = new ServerBootstrap(channelFactory);
       bootstrap.setPipelineFactory(new ChannelPipelineFactory() {
           @Override
@@ -84,7 +87,7 @@ public class AvroNettyServer implements Server {
               if (executionHandler != null) {
                   p.addLast("executionHandler", executionHandler);
               }
-              p.addLast("handler", new NettyServerAvroHandler());
+              p.addLast("handler", new NettyServerAvroHandler(logicalName));
               return p;
           }
       });
@@ -93,12 +96,12 @@ public class AvroNettyServer implements Server {
       serverChannel = bootstrap.bind(addr);
       allChannels.add(serverChannel);
   }
-    
+
   @Override
   public void start() {
     // No-op.
   }
-  
+
   @Override
   public void close() {
     ChannelGroupFuture future = allChannels.close();
@@ -106,7 +109,7 @@ public class AvroNettyServer implements Server {
     channelFactory.releaseExternalResources();
     closed.countDown();
   }
-  
+
   @Override
   public int getPort() {
     return ((InetSocketAddress) serverChannel.getLocalAddress()).getPort();
@@ -118,12 +121,17 @@ public class AvroNettyServer implements Server {
   }
 
   /**
-   * Avro server handler for the Netty transport 
+   * Avro server handler for the Netty transport
    */
   class NettyServerAvroHandler extends SimpleChannelUpstreamHandler {
 
-    private AvroNettyTransceiver connectionMetadata = new AvroNettyTransceiver();
-    
+    private final AvroNettyTransceiver connectionMetadata;
+
+    public NettyServerAvroHandler(String logicalName) {
+        super();
+        this.connectionMetadata = new AvroNettyTransceiver(logicalName);
+    }
+
     @Override
     public void handleUpstream(ChannelHandlerContext ctx, ChannelEvent e)
         throws Exception {
@@ -149,7 +157,7 @@ public class AvroNettyServer implements Server {
         // response will be null for oneway messages.
         if(res != null) {
           dataPack.setDatas(res);
-          e.getChannel().write(dataPack);          
+          e.getChannel().write(dataPack);
         }
       } catch (IOException ex) {
         LOG.warn("unexpect error");
@@ -158,7 +166,7 @@ public class AvroNettyServer implements Server {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) {
-      LOG.warn("Unexpected exception from downstream.", e.getCause());
+      LOG.warn("Unexpected exception from downstream for [" + this.connectionMetadata.getLogicalName() + "]", e.getCause());
       e.getChannel().close();
     }
 

@@ -84,8 +84,9 @@ public class AvroNettyTransceiver extends Transceiver {
     private final ReentrantReadWriteLock stateLock = new ReentrantReadWriteLock();
     private Channel channel;       // Synchronized on stateLock
     private Protocol remote;       // Synchronized on stateLock
+    private final String logicalName;
 
-    AvroNettyTransceiver() {
+    AvroNettyTransceiver(String logicalName) {
         channelFactory = null;
         connectTimeoutMillis = 0L;
         bootstrap = null;
@@ -95,37 +96,7 @@ public class AvroNettyTransceiver extends Transceiver {
         droppedEvents = null;
         eventsLogTimer = null;
         channelFuture = null;
-    }
-
-    /**
-     * Creates a NettyTransceiver, and attempts to connect to the given address.
-     * {@link #DEFAULT_CONNECTION_TIMEOUT_MILLIS} is used for the connection
-     * timeout.
-     *
-     * @param addr the address to connect to.
-     * @throws IOException if an error occurs connecting to the given address.
-     */
-    public AvroNettyTransceiver(InetSocketAddress addr) throws IOException {
-        this(addr, DEFAULT_CONNECTION_TIMEOUT_MILLIS);
-    }
-
-    /**
-     * Creates a NettyTransceiver, and attempts to connect to the given address.
-     *
-     * @param addr the address to connect to.
-     * @param connectTimeoutMillis maximum amount of time to wait for connection
-     * establishment in milliseconds, or null to use
-     * {@link #DEFAULT_CONNECTION_TIMEOUT_MILLIS}.
-     * @throws IOException if an error occurs connecting to the given address.
-     */
-    public AvroNettyTransceiver(InetSocketAddress addr,
-            Long connectTimeoutMillis) throws IOException {
-        this(addr, new NioClientSocketChannelFactory(
-                Executors.newCachedThreadPool(new NettyTransceiverThreadFactory(
-                "Avro " + AvroNettyTransceiver.class.getSimpleName() + " Boss")),
-                Executors.newCachedThreadPool(new NettyTransceiverThreadFactory(
-                "Avro " + AvroNettyTransceiver.class.getSimpleName() + " I/O Worker"))),
-                connectTimeoutMillis);
+        this.logicalName = logicalName;
     }
 
     /**
@@ -137,9 +108,9 @@ public class AvroNettyTransceiver extends Transceiver {
      * @param channelFactory the factory to use to create a new Netty Channel.
      * @throws IOException if an error occurs connecting to the given address.
      */
-    public AvroNettyTransceiver(InetSocketAddress addr, ChannelFactory channelFactory)
+    public AvroNettyTransceiver(InetSocketAddress addr, ChannelFactory channelFactory, String logicalName)
             throws IOException {
-        this(addr, channelFactory, buildDefaultBootstrapOptions(null));
+        this(addr, channelFactory, buildDefaultBootstrapOptions(null), logicalName);
     }
 
     /**
@@ -152,10 +123,10 @@ public class AvroNettyTransceiver extends Transceiver {
      * {@link #DEFAULT_CONNECTION_TIMEOUT_MILLIS}.
      * @throws IOException if an error occurs connecting to the given address.
      */
-    public AvroNettyTransceiver(InetSocketAddress addr, ChannelFactory channelFactory,
+    public AvroNettyTransceiver(InetSocketAddress addr, ChannelFactory channelFactory, String logicalName,
             Long connectTimeoutMillis) throws IOException {
         this(addr, channelFactory,
-                buildDefaultBootstrapOptions(connectTimeoutMillis));
+                buildDefaultBootstrapOptions(connectTimeoutMillis), logicalName);
     }
 
     /**
@@ -174,10 +145,12 @@ public class AvroNettyTransceiver extends Transceiver {
      * @throws IOException if an error occurs connecting to the given address.
      */
     public AvroNettyTransceiver(InetSocketAddress addr, ChannelFactory channelFactory,
-            Map<String, Object> nettyClientBootstrapOptions) throws IOException {
+            Map<String, Object> nettyClientBootstrapOptions, final String logicalName) throws IOException {
         if (channelFactory == null) {
             throw new NullPointerException("channelFactory is null");
         }
+
+        this.logicalName = logicalName;
 
         // Set up.
         this.channelFactory = channelFactory;
@@ -192,7 +165,7 @@ public class AvroNettyTransceiver extends Transceiver {
                 ChannelPipeline p = Channels.pipeline();
                 p.addLast("frameDecoder", new NettyFrameDecoder());
                 p.addLast("frameEncoder", new NettyFrameEncoder());
-                p.addLast("handler", new NettyClientAvroHandler());
+                p.addLast("handler", new NettyClientAvroHandler(logicalName));
                 return p;
             }
         });
@@ -220,8 +193,8 @@ public class AvroNettyTransceiver extends Transceiver {
             @Override
             public void run() {
                 if (droppedEvents.longValue() > 0l) {
-                    LOG.info("[host: " + remoteAddr.getHostName() + ", port: " + remoteAddr.getPort() + "] Sent " + sentEvents.longValue() + " events in the past minute.");
-                    LOG.info("[host: " + remoteAddr.getHostName() + ", port: " + remoteAddr.getPort() + "] Dropped " + droppedEvents.longValue() + " events in the past minute due to full TCP write buffer.");
+                    LOG.info("[logicalName: " + logicalName + ", host: " + remoteAddr.getHostName() + ", port: " + remoteAddr.getPort() + "] Sent " + sentEvents.longValue() + " events in the past minute.");
+                    LOG.info("[logicalName: " + logicalName + ", host: " + remoteAddr.getHostName() + ", port: " + remoteAddr.getPort() + "] Dropped " + droppedEvents.longValue() + " events in the past minute due to full TCP write buffer.");
                     droppedEvents.set(0l);
                 }
                 if (sentEvents.longValue() > 0l) {
@@ -257,6 +230,7 @@ public class AvroNettyTransceiver extends Transceiver {
         options.put("writeBufferHighWaterMark", 10 * 64 * 1024);
         options.put("sendBufferSize", 1048576);
         options.put("receiveBufferSize", 1048576);
+        options.put("keepAlive", true);
 
         return options;
     }
@@ -289,7 +263,7 @@ public class AvroNettyTransceiver extends Transceiver {
                 if (!isChannelReady(channel)) {
                     synchronized (channelFutureLock) {
                         if (!stopping) {
-                            LOG.debug("Connecting to " + remoteAddr);
+                            LOG.debug("Connecting to " + remoteAddr + " [" + this.getLogicalName() + "]");
                             channelFuture = bootstrap.connect(remoteAddr);
                         }
                     }
@@ -298,7 +272,7 @@ public class AvroNettyTransceiver extends Transceiver {
 
                         synchronized (channelFutureLock) {
                             if (!channelFuture.isSuccess()) {
-                                throw new IOException("Error connecting to " + remoteAddr,
+                                throw new IOException("Error connecting to " + remoteAddr + " [" + this.getLogicalName() + "]",
                                         channelFuture.getCause());
                             }
                             channel = channelFuture.getChannel();
@@ -349,9 +323,9 @@ public class AvroNettyTransceiver extends Transceiver {
         try {
             if (channel != null) {
                 if (cause != null) {
-                    LOG.debug("Disconnecting from " + remoteAddr, cause);
+                    LOG.debug("Disconnecting from " + remoteAddr + " [" + this.getLogicalName() + "]", cause);
                 } else {
-                    LOG.debug("Disconnecting from " + remoteAddr);
+                    LOG.debug("Disconnecting from " + remoteAddr + " [" + this.getLogicalName() + "]");
                 }
                 channelToClose = channel;
                 channel = null;
@@ -519,9 +493,22 @@ public class AvroNettyTransceiver extends Transceiver {
     }
 
     /**
+     * @return the logicalName
+     */
+    public String getLogicalName() {
+        return logicalName;
+    }
+
+    /**
      * Avro client handler for the Netty transport
      */
     class NettyClientAvroHandler extends SimpleChannelUpstreamHandler {
+
+        private final String logicalName;
+
+        public NettyClientAvroHandler(String logicalName) {
+            this.logicalName = logicalName;
+        }
 
         @Override
         public void handleUpstream(ChannelHandlerContext ctx, ChannelEvent e)
@@ -531,7 +518,7 @@ public class AvroNettyTransceiver extends Transceiver {
                 ChannelStateEvent cse = (ChannelStateEvent) e;
                 if ((cse.getState() == ChannelState.OPEN) && (Boolean.FALSE.equals(cse.getValue()))) {
                     // Server closed connection; disconnect client side
-                    LOG.debug("Remote peer " + remoteAddr + " closed connection.");
+                    LOG.debug("Remote peer " + remoteAddr + " [" + this.logicalName + "]" + " closed connection.");
                     disconnect(false, true, null);
                 }
             }

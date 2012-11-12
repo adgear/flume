@@ -86,8 +86,9 @@ public class JsonNettyTransceiver {
      */
     private final ReentrantReadWriteLock stateLock = new ReentrantReadWriteLock();
     private Channel channel; // Synchronized on stateLock
+    private final String logicalName;
 
-    JsonNettyTransceiver() {
+    JsonNettyTransceiver(String logicalName) {
         channelFactory = null;
         connectTimeoutMillis = 0L;
         bootstrap = null;
@@ -97,6 +98,7 @@ public class JsonNettyTransceiver {
         droppedEvents = null;
         eventsLogTimer = null;
         channelFuture = null;
+        this.logicalName = logicalName;
     }
 
     /**
@@ -107,8 +109,8 @@ public class JsonNettyTransceiver {
      * @param addr the address to connect to.
      * @throws IOException if an error occurs connecting to the given address.
      */
-    public JsonNettyTransceiver(InetSocketAddress addr) throws IOException {
-        this(addr, DEFAULT_CONNECTION_TIMEOUT_MILLIS);
+    public JsonNettyTransceiver(InetSocketAddress addr, String logicalName) throws IOException {
+        this(addr, DEFAULT_CONNECTION_TIMEOUT_MILLIS, logicalName);
     }
 
     /**
@@ -121,11 +123,12 @@ public class JsonNettyTransceiver {
      * @throws IOException if an error occurs connecting to the given address.
      */
     public JsonNettyTransceiver(InetSocketAddress addr,
-            Long connectTimeoutMillis) throws IOException {
+            Long connectTimeoutMillis, String logicalName) throws IOException {
         this(
                 addr,
                 new NioClientSocketChannelFactory(getBossExecutorService(), getWorkerExecutorService()),
-                connectTimeoutMillis);
+                connectTimeoutMillis,
+                logicalName);
     }
 
     /**
@@ -138,8 +141,8 @@ public class JsonNettyTransceiver {
      * @throws IOException if an error occurs connecting to the given address.
      */
     public JsonNettyTransceiver(InetSocketAddress addr,
-            ChannelFactory channelFactory) throws IOException {
-        this(addr, channelFactory, buildDefaultBootstrapOptions(null));
+            ChannelFactory channelFactory, String logicalName) throws IOException {
+        this(addr, channelFactory, buildDefaultBootstrapOptions(null), logicalName);
     }
 
     /**
@@ -153,10 +156,10 @@ public class JsonNettyTransceiver {
      * @throws IOException if an error occurs connecting to the given address.
      */
     public JsonNettyTransceiver(InetSocketAddress addr,
-            ChannelFactory channelFactory, Long connectTimeoutMillis)
+            ChannelFactory channelFactory, Long connectTimeoutMillis, String logicalName)
             throws IOException {
         this(addr, channelFactory,
-                buildDefaultBootstrapOptions(connectTimeoutMillis));
+                buildDefaultBootstrapOptions(connectTimeoutMillis), logicalName);
     }
 
     /**
@@ -176,10 +179,12 @@ public class JsonNettyTransceiver {
      */
     public JsonNettyTransceiver(InetSocketAddress addr,
             ChannelFactory channelFactory,
-            Map<String, Object> nettyClientBootstrapOptions) throws IOException {
+            Map<String, Object> nettyClientBootstrapOptions, final String logicalName) throws IOException {
         if (channelFactory == null) {
             throw new NullPointerException("channelFactory is null");
         }
+
+        this.logicalName = logicalName;
 
         // Set up.
         this.channelFactory = channelFactory;
@@ -195,7 +200,7 @@ public class JsonNettyTransceiver {
                 ChannelPipeline p = Channels.pipeline();
                 p.addLast("httpHandler", new HttpClientCodec());
                 p.addLast("chunkedWriter", new ChunkedWriteHandler());
-                p.addLast("handler", new NettyClientHandler());
+                p.addLast("handler", new NettyClientHandler(logicalName));
                 return p;
             }
         });
@@ -227,8 +232,8 @@ public class JsonNettyTransceiver {
             @Override
             public void run() {
                 if (droppedEvents.longValue() > 0l) {
-                    LOG.info("[host: " + remoteAddr.getHostName() + ", port: " + remoteAddr.getPort() + "] Sent " + sentEvents.longValue() + " events in the past minute.");
-                    LOG.info("[host: " + remoteAddr.getHostName() + ", port: " + remoteAddr.getPort() + "] Dropped " + droppedEvents.longValue() + " events in the past minute due to full TCP write buffer.");
+                    LOG.info("[logicalName: " + logicalName + ", host: " + remoteAddr.getHostName() + ", port: " + remoteAddr.getPort() + "] Sent " + sentEvents.longValue() + " events in the past minute.");
+                    LOG.info("[logicalName: " + logicalName + ", host: " + remoteAddr.getHostName() + ", port: " + remoteAddr.getPort() + "] Dropped " + droppedEvents.longValue() + " events in the past minute due to full TCP write buffer.");
                     droppedEvents.set(0l);
                 }
                 if (sentEvents.longValue() > 0l) {
@@ -279,6 +284,7 @@ public class JsonNettyTransceiver {
         options.put("writeBufferHighWaterMark", 10 * 64 * 1024);
         options.put("sendBufferSize", 1048576);
         options.put("receiveBufferSize", 1048576);
+        options.put("keepAlive", true);
 
         return options;
     }
@@ -309,12 +315,12 @@ public class JsonNettyTransceiver {
                     stateLock.writeLock().lock();
                     try {
                             if (!isChannelReady(channel)) {
-                                    LOG.debug("Connecting to " + remoteAddr);
+                                    LOG.debug("Connecting to " + remoteAddr + " [" + this.getLogicalName() + "]");
                                     ChannelFuture channelFuture = bootstrap.connect(remoteAddr);
                                     channelFuture.awaitUninterruptibly(connectTimeoutMillis);
                                     if (!channelFuture.isSuccess()) {
                                             throw new IOException("Error connecting to "
-                                                            + remoteAddr, channelFuture.getCause());
+                                                            + remoteAddr + " [" + this.getLogicalName() + "]", channelFuture.getCause());
                                     }
                                     channel = channelFuture.getChannel();
 
@@ -371,9 +377,9 @@ public class JsonNettyTransceiver {
         try {
             if (channel != null) {
                 if (cause != null) {
-                    LOG.debug("Disconnecting from " + remoteAddr, cause);
+                    LOG.debug("Disconnecting from " + remoteAddr + " [" + this.getLogicalName() + "]", cause);
                 } else {
-                    LOG.debug("Disconnecting from " + remoteAddr);
+                    LOG.debug("Disconnecting from " + remoteAddr + " [" + this.getLogicalName() + "]");
                 }
                 channelToClose = channel;
                 channel = null;
@@ -424,9 +430,22 @@ public class JsonNettyTransceiver {
     }
 
     /**
+     * @return the logicalName
+     */
+    public String getLogicalName() {
+        return logicalName;
+    }
+
+    /**
      * Client handler for the Netty transport
      */
     class NettyClientHandler extends SimpleChannelUpstreamHandler {
+
+        private final String logicalName;
+
+        public NettyClientHandler(String logicalName) {
+            this.logicalName = logicalName;
+        }
 
         @Override
         public void handleUpstream(ChannelHandlerContext ctx, ChannelEvent e)
@@ -437,8 +456,7 @@ public class JsonNettyTransceiver {
                 if ((cse.getState() == ChannelState.OPEN)
                         && (Boolean.FALSE.equals(cse.getValue()))) {
                     // Server closed connection; disconnect client side
-                    LOG.debug("Remote peer " + remoteAddr
-                            + " closed connection.");
+                    LOG.debug("Remote peer " + remoteAddr  + " [" + this.logicalName + "]" + " closed connection.");
                     disconnect(false, true, null);
                 }
             }

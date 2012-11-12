@@ -105,7 +105,7 @@ public class JsonNonBlockingEventSink extends EventSink.Base {
 		        workerExecutorService);
 
         try {
-            transport = new JsonNettyTransceiver(new InetSocketAddress(host, port), factory);
+            transport = new JsonNettyTransceiver(new InetSocketAddress(host, port), factory, this.logicalName);
             jof = new JsonOutputFormat(Charset.forName("UTF-8"));
             os = new ByteArrayOutputStream();
 		} catch (Exception e) {

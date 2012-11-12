@@ -100,7 +100,7 @@ public class AvroNonBlockingEventSink extends EventSink.Base {
 
 		try {
 			transport = new AvroNettyTransceiver(new InetSocketAddress(host,
-					port), factory);
+					port), factory, this.logicalName);
 
 			this.avroClient = (FlumeEventAvroServer) SpecificRequestor
 					.getClient(FlumeEventAvroServer.class, transport);
