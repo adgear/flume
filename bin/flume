@@ -260,7 +260,7 @@ if [ "$CMD" = "-h" ] ; then
   usage
 elif [ "$CMD" = "node" ] ; then
   # there can be multiple nodes.
-  exec $NODE_WATCHDOG java $JOPTS $UOPTS com.cloudera.flume.agent.FlumeNode "$@"
+  exec $NODE_WATCHDOG java "-XX:OnOutOfMemoryError=kill -9 %p" $JOPTS $UOPTS com.cloudera.flume.agent.FlumeNode "$@"
 elif [ "$CMD" = "nodei" ] ; then
   # there can be multiple nodes.
   exec $NODEI_WATCHDOG java $JOPTS $UOPTS com.cloudera.flume.agent.FlumeNode "$@"
@@ -271,7 +271,7 @@ elif [ "$CMD" = "master" ] ; then
     echo "Master already running, pid=$PID"
     exit -1
   fi
-  exec $MASTER_WATCHDOG java $JOPTS $UOPTS com.cloudera.flume.master.FlumeMaster "$@"
+  exec $MASTER_WATCHDOG java "-XX:OnOutOfMemoryError=kill -9 %p" $JOPTS $UOPTS com.cloudera.flume.master.FlumeMaster "$@"
 elif [ "$CMD" = "node_nowatch" ] ; then
   exec java $JOPTS $UOPTS com.cloudera.flume.agent.FlumeNode "$@"
 elif [ "$CMD" = "master_nowatch" ] ; then
