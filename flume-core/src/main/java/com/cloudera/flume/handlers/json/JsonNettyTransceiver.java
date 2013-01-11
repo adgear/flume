@@ -87,8 +87,9 @@ public class JsonNettyTransceiver {
     private final ReentrantReadWriteLock stateLock = new ReentrantReadWriteLock();
     private Channel channel; // Synchronized on stateLock
     private final String logicalName;
+    private final String uri;
 
-    JsonNettyTransceiver(String logicalName) {
+    JsonNettyTransceiver(final String logicalName) {
         channelFactory = null;
         connectTimeoutMillis = 0L;
         bootstrap = null;
@@ -99,6 +100,8 @@ public class JsonNettyTransceiver {
         eventsLogTimer = null;
         channelFuture = null;
         this.logicalName = logicalName;
+        uri = "/";
+        
     }
 
     /**
@@ -109,8 +112,8 @@ public class JsonNettyTransceiver {
      * @param addr the address to connect to.
      * @throws IOException if an error occurs connecting to the given address.
      */
-    public JsonNettyTransceiver(InetSocketAddress addr, String logicalName) throws IOException {
-        this(addr, DEFAULT_CONNECTION_TIMEOUT_MILLIS, logicalName);
+    public JsonNettyTransceiver(InetSocketAddress addr, final String uri, final String logicalName) throws IOException {
+        this(addr, uri, DEFAULT_CONNECTION_TIMEOUT_MILLIS, logicalName);
     }
 
     /**
@@ -123,9 +126,10 @@ public class JsonNettyTransceiver {
      * @throws IOException if an error occurs connecting to the given address.
      */
     public JsonNettyTransceiver(InetSocketAddress addr,
-            Long connectTimeoutMillis, String logicalName) throws IOException {
+            final String uri, Long connectTimeoutMillis, final String logicalName) throws IOException {
         this(
                 addr,
+                uri,
                 new NioClientSocketChannelFactory(getBossExecutorService(), getWorkerExecutorService()),
                 connectTimeoutMillis,
                 logicalName);
@@ -141,8 +145,9 @@ public class JsonNettyTransceiver {
      * @throws IOException if an error occurs connecting to the given address.
      */
     public JsonNettyTransceiver(InetSocketAddress addr,
-            ChannelFactory channelFactory, String logicalName) throws IOException {
-        this(addr, channelFactory, buildDefaultBootstrapOptions(null), logicalName);
+            final String uri,
+            ChannelFactory channelFactory, final String logicalName) throws IOException {
+        this(addr, uri, channelFactory, buildDefaultBootstrapOptions(null), logicalName);
     }
 
     /**
@@ -156,9 +161,10 @@ public class JsonNettyTransceiver {
      * @throws IOException if an error occurs connecting to the given address.
      */
     public JsonNettyTransceiver(InetSocketAddress addr,
-            ChannelFactory channelFactory, Long connectTimeoutMillis, String logicalName)
+            final String uri,
+            ChannelFactory channelFactory, Long connectTimeoutMillis, final String logicalName)
             throws IOException {
-        this(addr, channelFactory,
+        this(addr, uri, channelFactory,
                 buildDefaultBootstrapOptions(connectTimeoutMillis), logicalName);
     }
 
@@ -178,6 +184,7 @@ public class JsonNettyTransceiver {
      * @throws IOException if an error occurs connecting to the given address.
      */
     public JsonNettyTransceiver(InetSocketAddress addr,
+            final String uri,
             ChannelFactory channelFactory,
             Map<String, Object> nettyClientBootstrapOptions, final String logicalName) throws IOException {
         if (channelFactory == null) {
@@ -185,6 +192,7 @@ public class JsonNettyTransceiver {
         }
 
         this.logicalName = logicalName;
+        this.uri = uri;
 
         // Set up.
         this.channelFactory = channelFactory;
@@ -219,8 +227,7 @@ public class JsonNettyTransceiver {
         stateLock.readLock().lock();
         try {
             getChannel();
-        }
-        finally {
+        } finally {
             stateLock.readLock().unlock();
         }
 
@@ -299,49 +306,49 @@ public class JsonNettyTransceiver {
                 && channel.isConnected();
     }
 
-    /** Gets the Netty channel. If the channel is not connected, first attempts
+    /**
+     * Gets the Netty channel. If the channel is not connected, first attempts
      * to connect. NOTE: The stateLock read lock *must* be acquired before
      * calling this method.
      *
      * @return the Netty channel
-     * @throws IOException
-     *             if an error occurs connecting the channel.
+     * @throws IOException if an error occurs connecting the channel.
      */
     private Channel getChannel() throws IOException {
-            if (!isChannelReady(channel)) {
-                    // Need to reconnect
-                    // Upgrade to write lock
-                    stateLock.readLock().unlock();
-                    stateLock.writeLock().lock();
-                    try {
-                            if (!isChannelReady(channel)) {
-                                    LOG.debug("Connecting to " + remoteAddr + " [" + this.getLogicalName() + "]");
-                                    ChannelFuture channelFuture = bootstrap.connect(remoteAddr);
-                                    channelFuture.awaitUninterruptibly(connectTimeoutMillis);
-                                    if (!channelFuture.isSuccess()) {
-                                            throw new IOException("Error connecting to "
-                                                            + remoteAddr + " [" + this.getLogicalName() + "]", channelFuture.getCause());
-                                    }
-                                    channel = channelFuture.getChannel();
-
-                 HttpRequest nettyRequest = new DefaultHttpRequest(
-                         HttpVersion.HTTP_1_1, HttpMethod.POST, "/");
-                 nettyRequest.setHeader(HttpHeaders.Names.HOST, remoteAddr.getHostName() + ":" + remoteAddr.getPort());
-                 nettyRequest.setHeader(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
-                 nettyRequest.setHeader(HttpHeaders.Names.ACCEPT, "*/*");
-                 nettyRequest.setHeader(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=utf-8");
-                 nettyRequest.setHeader(HttpHeaders.Names.TRANSFER_ENCODING, HttpHeaders.Values.CHUNKED);
-                 nettyRequest.setChunked(true);
-
-                 getChannel().write(nettyRequest);
-                            }
-                    } finally {
-                            // Downgrade to read lock:
-                            stateLock.readLock().lock();
-                            stateLock.writeLock().unlock();
+        if (!isChannelReady(channel)) {
+            // Need to reconnect
+            // Upgrade to write lock
+            stateLock.readLock().unlock();
+            stateLock.writeLock().lock();
+            try {
+                if (!isChannelReady(channel)) {
+                    LOG.debug("Connecting to " + remoteAddr + " [" + this.getLogicalName() + "]");
+                    ChannelFuture channelFuture = bootstrap.connect(remoteAddr);
+                    channelFuture.awaitUninterruptibly(connectTimeoutMillis);
+                    if (!channelFuture.isSuccess()) {
+                        throw new IOException("Error connecting to "
+                                + remoteAddr + " [" + this.getLogicalName() + "]", channelFuture.getCause());
                     }
+                    channel = channelFuture.getChannel();
+
+                    HttpRequest nettyRequest = new DefaultHttpRequest(
+                            HttpVersion.HTTP_1_1, HttpMethod.POST, uri);
+                    nettyRequest.setHeader(HttpHeaders.Names.HOST, remoteAddr.getHostName() + ":" + remoteAddr.getPort());
+                    nettyRequest.setHeader(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
+                    nettyRequest.setHeader(HttpHeaders.Names.ACCEPT, "*/*");
+                    nettyRequest.setHeader(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=utf-8");
+                    nettyRequest.setHeader(HttpHeaders.Names.TRANSFER_ENCODING, HttpHeaders.Values.CHUNKED);
+                    nettyRequest.setChunked(true);
+
+                    getChannel().write(nettyRequest);
+                }
+            } finally {
+                // Downgrade to read lock:
+                stateLock.readLock().lock();
+                stateLock.writeLock().unlock();
             }
-            return channel;
+        }
+        return channel;
     }
 
     /**
@@ -456,7 +463,7 @@ public class JsonNettyTransceiver {
                 if ((cse.getState() == ChannelState.OPEN)
                         && (Boolean.FALSE.equals(cse.getValue()))) {
                     // Server closed connection; disconnect client side
-                    LOG.debug("Remote peer " + remoteAddr  + " [" + this.logicalName + "]" + " closed connection.");
+                    LOG.debug("Remote peer " + remoteAddr + " [" + this.logicalName + "]" + " closed connection.");
                     disconnect(false, true, null);
                 }
             }
@@ -477,7 +484,6 @@ public class JsonNettyTransceiver {
             eventsLogTimer.cancel();
             eventsLogTimer.purge();
         }
-
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) {

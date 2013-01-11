@@ -33,149 +33,152 @@ import org.jboss.netty.util.ThreadRenamingRunnable;
  */
 public class JsonNonBlockingEventSink extends EventSink.Base {
 
-	static final Logger LOG = LoggerFactory.getLogger(JsonNonBlockingEventSink.class);
-
-	final public static String A_SERVERHOST = "serverHost";
-	final public static String A_SERVERPORT = "serverPort";
-	final public static String A_SENTBYTES = "sentBytes";
-
+    static final Logger LOG = LoggerFactory.getLogger(JsonNonBlockingEventSink.class);
+    final public static String A_SERVERHOST = "serverHost";
+    final public static String A_SERVERPORT = "serverPort";
+    final public static String A_SENTBYTES = "sentBytes";
     String logicalName;
-	String host;
-	int port;
-	JsonNettyTransceiver transport;
-	JsonOutputFormat jof;
-	ByteArrayOutputStream os;
+    String host;
+    int port;
+    String uri;
+    JsonNettyTransceiver transport;
+    JsonOutputFormat jof;
+    ByteArrayOutputStream os;
 
-	public JsonNonBlockingEventSink(String logicalName, String host, int port) {
+    public JsonNonBlockingEventSink(String logicalName, String host, int port, String uri) {
         this.logicalName = logicalName;
-		this.host = host;
-		this.port = port;
-	}
+        this.host = host;
+        this.port = port;
+        this.uri = uri;
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public void append(Event e) throws IOException, InterruptedException {
-		// Make sure client side is initialized.
-		this.ensureInitialized();
-		try {
-			jof.format(os, e);
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void append(Event e) throws IOException, InterruptedException {
+        // Make sure client side is initialized.
+        this.ensureInitialized();
+        try {
+            jof.format(os, e);
 
-			transport.writeData(os.toByteArray());
+            transport.writeData(os.toByteArray());
 
-			os.reset();
+            os.reset();
 
-			super.append(e);
-		} catch (Exception e1) {
-			if (e1 instanceof IOException) {
-				throw (IOException)e1;
-			}
-			else {
-				throw new IOException("Append failed " + e1.getMessage(), e1);
-			}
-		}
-	}
+            super.append(e);
+        } catch (Exception e1) {
+            if (e1 instanceof IOException) {
+                throw (IOException) e1;
+            } else {
+                throw new IOException("Append failed " + e1.getMessage(), e1);
+            }
+        }
+    }
 
-	private void ensureInitialized() throws IOException {
-		if (transport == null || jof == null || os == null) {
-			throw new IOException(
-					"Append called while not connected to sink");
-		}
-	}
+    private void ensureInitialized() throws IOException {
+        if (transport == null || jof == null || os == null) {
+            throw new IOException(
+                    "Append called while not connected to sink");
+        }
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public void open() throws IOException {
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void open() throws IOException {
         ThreadRenamingRunnable.setThreadNameDeterminer(ThreadNameDeterminer.CURRENT);
         ExecutorService bossExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS,
-				new LinkedBlockingQueue<Runnable>(10000),
-				new JsonNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Json " + JsonNettyTransceiver.class.getSimpleName() + " Boss"),
-				new ThreadPoolExecutor.DiscardPolicy());
+                new LinkedBlockingQueue<Runnable>(10000),
+                new JsonNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Json " + JsonNettyTransceiver.class.getSimpleName() + " Boss"),
+                new ThreadPoolExecutor.DiscardPolicy());
 
-		ExecutorService workerExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS,
-				new LinkedBlockingQueue<Runnable>(10000),
-				new JsonNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Json " + JsonNettyTransceiver.class.getSimpleName() + " I/O Worker"),
-				new ThreadPoolExecutor.DiscardPolicy());
+        ExecutorService workerExecutorService = new ThreadPoolExecutor(1, 10, 30, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<Runnable>(10000),
+                new JsonNettyTransceiver.NettyTransceiverThreadFactory("[" + this.logicalName + "] Json " + JsonNettyTransceiver.class.getSimpleName() + " I/O Worker"),
+                new ThreadPoolExecutor.DiscardPolicy());
 
-		ChannelFactory factory = new NioClientSocketChannelFactory(
-				bossExecutorService,
-		        workerExecutorService);
+        ChannelFactory factory = new NioClientSocketChannelFactory(
+                bossExecutorService,
+                workerExecutorService);
 
         try {
-            transport = new JsonNettyTransceiver(new InetSocketAddress(host, port), factory, this.logicalName);
+            transport = new JsonNettyTransceiver(new InetSocketAddress(host, port), this.uri, factory, this.logicalName);
             jof = new JsonOutputFormat(Charset.forName("UTF-8"));
             os = new ByteArrayOutputStream();
-		} catch (Exception e) {
-			factory.releaseExternalResources();
-			throw new IOException("Failed to open Json event sink at " + host
-					+ ":" + port + " : " + e.getMessage());
-		}
+        } catch (Exception e) {
+            factory.releaseExternalResources();
+            throw new IOException("Failed to open Json event sink at " + host
+                    + ":" + port + " : " + e.getMessage());
+        }
 
-		LOG.info("[logicalNode " + this.logicalName + "] to " + host + ":" + port + " opened");
-	}
+        LOG.info("[logicalNode " + this.logicalName + "] to " + host + ":" + port + uri + " opened");
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public void close() throws IOException {
-		if (transport != null) {
-			transport.close();
-			transport = null;
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public void close() throws IOException {
+        if (transport != null) {
+            transport.close();
+            transport = null;
 
-			jof = null;
+            jof = null;
 
-			if (os != null) {
-				os.close();
-				os = null;
-			}
-			LOG.info("[logicalNode " + this.logicalName + "] to " + host + ":" + port + " closed");
-		}
-	}
+            if (os != null) {
+                os.close();
+                os = null;
+            }
+            LOG.info("[logicalNode " + this.logicalName + "] to " + host + ":" + port + uri + " closed");
+        }
+    }
 
-	public long getSentBytes() {
-		return 0L;
-	}
+    public long getSentBytes() {
+        return 0L;
+    }
 
-	/**
-	 * {@inheritDoc}
-	 */
-	@Override
-	public ReportEvent getMetrics() {
-		ReportEvent rpt = super.getMetrics();
-		rpt.setStringMetric(A_SERVERHOST, host);
-		rpt.setLongMetric(A_SERVERPORT, port);
-		return rpt;
-	}
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ReportEvent getMetrics() {
+        ReportEvent rpt = super.getMetrics();
+        rpt.setStringMetric(A_SERVERHOST, host);
+        rpt.setLongMetric(A_SERVERPORT, port);
+        return rpt;
+    }
 
-	public static SinkBuilder builder() {
-		return new SinkBuilder() {
-			@Override
-			public EventSink build(Context context, String... args) {
-				if (args.length > 2) {
-					throw new IllegalArgumentException(
-							"usage: jsonNbSink([hostname, [portno]]) ");
-				}
-				String host = FlumeConfiguration.get().getCollectorHost();
-				int port = FlumeConfiguration.get().getCollectorPort();
-				if (args.length >= 1) {
-					host = args[0];
-				}
+    public static SinkBuilder builder() {
+        return new SinkBuilder() {
+            @Override
+            public EventSink build(Context context, String... args) {
+                if (args.length > 3) {
+                    throw new IllegalArgumentException(
+                            "usage: jsonNbSink([hostname, [portno]], [URI]) ");
+                }
+                String host = FlumeConfiguration.get().getCollectorHost();
+                int port = FlumeConfiguration.get().getCollectorPort();
+                if (args.length >= 1) {
+                    host = args[0];
+                }
 
-				if (args.length >= 2) {
-					port = Integer.parseInt(args[1]);
-				}
-				return new JsonNonBlockingEventSink(context.getValue(LogicalNodeContext.C_LOGICAL), host, port);
-			}
-		};
-	}
+                if (args.length >= 2) {
+                    port = Integer.parseInt(args[1]);
+                }
+                String uri = "/";
+                if (args.length >= 3) {
+                    uri = args[2];
+                }
+                return new JsonNonBlockingEventSink(context.getValue(LogicalNodeContext.C_LOGICAL), host, port, uri);
+            }
+        };
+    }
 
-	@SuppressWarnings("unchecked")
-	public static List<Pair<String, SinkFactory.SinkBuilder>> getSinkBuilders() {
-		return Arrays.asList(new Pair<String, SinkFactory.SinkBuilder>(
-				"jsonNbSink", builder()));
-	}
+    @SuppressWarnings("unchecked")
+    public static List<Pair<String, SinkFactory.SinkBuilder>> getSinkBuilders() {
+        return Arrays.asList(new Pair<String, SinkFactory.SinkBuilder>(
+                "jsonNbSink", builder()));
+    }
 }
