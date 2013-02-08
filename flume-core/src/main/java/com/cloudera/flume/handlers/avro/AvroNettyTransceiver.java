@@ -27,7 +27,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -41,7 +40,6 @@ import org.apache.avro.ipc.NettyTransportCodec.NettyFrameEncoder;
 import org.apache.avro.ipc.Transceiver;
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.channel.*;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -381,9 +379,16 @@ public class AvroNettyTransceiver extends Transceiver {
     }
 
     public void close() {
-        // Close the connection:
-        stopping = true;
-        disconnect(true, true, null);
+        try {
+            // Close the connection:
+            stopping = true;
+            disconnect(true, true, null);
+        }
+        finally {
+            channelFactory.releaseExternalResources();
+            eventsLogTimer.cancel();
+            eventsLogTimer.purge();
+        }
     }
 
     @Override
@@ -534,10 +539,8 @@ public class AvroNettyTransceiver extends Transceiver {
 
         @Override
         public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+            LOG.debug("Channel closed called on " + remoteAddr + " [" + this.logicalName + "]");
             super.channelClosed(ctx, e);
-            channelFactory.releaseExternalResources();
-            eventsLogTimer.cancel();
-            eventsLogTimer.purge();
         }
 
         @Override
@@ -556,6 +559,7 @@ public class AvroNettyTransceiver extends Transceiver {
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) {
+            LOG.debug("Exception caught on " + remoteAddr + " [" + this.logicalName + "]: " + e.getCause());
             disconnect(false, true, e.getCause());
         }
     }

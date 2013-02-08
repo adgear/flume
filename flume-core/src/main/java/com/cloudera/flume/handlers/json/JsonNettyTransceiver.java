@@ -222,7 +222,7 @@ public class JsonNettyTransceiver {
         //for (String key: bootstrap.getOptions().keySet()) {
         //    LOG.info("ClientBootstrap option: " + key + "=" + bootstrap.getOption(key));
         //}
-
+        
         // Make a new connection.
         stateLock.readLock().lock();
         try {
@@ -408,9 +408,16 @@ public class JsonNettyTransceiver {
     }
 
     public void close() {
-        // Close the connection:
-        stopping = true;
-        disconnect(true, true, null);
+        try {
+            // Close the connection:
+            stopping = true;
+            disconnect(true, true, null);
+        }
+        finally {
+            channelFactory.releaseExternalResources();
+            eventsLogTimer.cancel();
+            eventsLogTimer.purge();
+        }
     }
 
     public void writeData(byte[] data) throws IOException {
@@ -479,14 +486,13 @@ public class JsonNettyTransceiver {
 
         @Override
         public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+            LOG.debug("Channel closed called on " + remoteAddr + " [" + this.logicalName + "]");
             super.channelClosed(ctx, e);
-            channelFactory.releaseExternalResources();
-            eventsLogTimer.cancel();
-            eventsLogTimer.purge();
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) {
+            LOG.debug("Exception caught on " + remoteAddr + " [" + this.logicalName + "]: " + e.getCause());
             disconnect(false, true, e.getCause());
         }
     }
