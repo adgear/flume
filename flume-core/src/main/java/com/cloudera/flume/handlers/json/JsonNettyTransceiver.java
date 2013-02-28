@@ -101,7 +101,7 @@ public class JsonNettyTransceiver {
         channelFuture = null;
         this.logicalName = logicalName;
         uri = "/";
-        
+
     }
 
     /**
@@ -222,7 +222,7 @@ public class JsonNettyTransceiver {
         //for (String key: bootstrap.getOptions().keySet()) {
         //    LOG.info("ClientBootstrap option: " + key + "=" + bootstrap.getOption(key));
         //}
-        
+
         // Make a new connection.
         stateLock.readLock().lock();
         try {
@@ -322,25 +322,34 @@ public class JsonNettyTransceiver {
             stateLock.writeLock().lock();
             try {
                 if (!isChannelReady(channel)) {
-                    LOG.debug("Connecting to " + remoteAddr + " [" + this.getLogicalName() + "]");
-                    ChannelFuture channelFuture = bootstrap.connect(remoteAddr);
-                    channelFuture.awaitUninterruptibly(connectTimeoutMillis);
-                    if (!channelFuture.isSuccess()) {
-                        throw new IOException("Error connecting to "
-                                + remoteAddr + " [" + this.getLogicalName() + "]", channelFuture.getCause());
+                    synchronized (channelFutureLock) {
+                        if (!stopping) {
+                            LOG.debug("Connecting to " + remoteAddr + " [" + this.getLogicalName() + "]");
+                            channelFuture = bootstrap.connect(remoteAddr);
+                        }
                     }
-                    channel = channelFuture.getChannel();
+                    if (channelFuture != null) {
+                        channelFuture.awaitUninterruptibly(connectTimeoutMillis);
+                        synchronized (channelFutureLock) {
+                            if (!channelFuture.isSuccess()) {
+                                throw new IOException("Error connecting to "
+                                        + remoteAddr + " [" + this.getLogicalName() + "]", channelFuture.getCause());
+                            }
+                            channel = channelFuture.getChannel();
+                            channelFuture = null;
 
-                    HttpRequest nettyRequest = new DefaultHttpRequest(
-                            HttpVersion.HTTP_1_1, HttpMethod.POST, uri);
-                    nettyRequest.setHeader(HttpHeaders.Names.HOST, remoteAddr.getHostName() + ":" + remoteAddr.getPort());
-                    nettyRequest.setHeader(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
-                    nettyRequest.setHeader(HttpHeaders.Names.ACCEPT, "*/*");
-                    nettyRequest.setHeader(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=utf-8");
-                    nettyRequest.setHeader(HttpHeaders.Names.TRANSFER_ENCODING, HttpHeaders.Values.CHUNKED);
-                    nettyRequest.setChunked(true);
+                            HttpRequest nettyRequest = new DefaultHttpRequest(
+                                    HttpVersion.HTTP_1_1, HttpMethod.POST, uri);
+                            nettyRequest.setHeader(HttpHeaders.Names.HOST, remoteAddr.getHostName() + ":" + remoteAddr.getPort());
+                            nettyRequest.setHeader(HttpHeaders.Names.CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
+                            nettyRequest.setHeader(HttpHeaders.Names.ACCEPT, "*/*");
+                            nettyRequest.setHeader(HttpHeaders.Names.CONTENT_TYPE, "application/json; charset=utf-8");
+                            nettyRequest.setHeader(HttpHeaders.Names.TRANSFER_ENCODING, HttpHeaders.Values.CHUNKED);
+                            nettyRequest.setChunked(true);
 
-                    getChannel().write(nettyRequest);
+                            getChannel().write(nettyRequest);
+                        }
+                    }
                 }
             } finally {
                 // Downgrade to read lock:
@@ -412,8 +421,7 @@ public class JsonNettyTransceiver {
             // Close the connection:
             stopping = true;
             disconnect(true, true, null);
-        }
-        finally {
+        } finally {
             channelFactory.releaseExternalResources();
             eventsLogTimer.cancel();
             eventsLogTimer.purge();
