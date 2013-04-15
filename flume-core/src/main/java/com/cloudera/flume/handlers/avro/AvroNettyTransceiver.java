@@ -28,6 +28,7 @@ import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -40,6 +41,9 @@ import org.apache.avro.ipc.NettyTransportCodec.NettyFrameEncoder;
 import org.apache.avro.ipc.Transceiver;
 import org.jboss.netty.bootstrap.ClientBootstrap;
 import org.jboss.netty.channel.*;
+import org.jboss.netty.channel.group.ChannelGroup;
+import org.jboss.netty.channel.group.ChannelGroupFuture;
+import org.jboss.netty.channel.group.DefaultChannelGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,6 +87,27 @@ public class AvroNettyTransceiver extends Transceiver {
     private Channel channel;       // Synchronized on stateLock
     private Protocol remote;       // Synchronized on stateLock
     private final String logicalName;
+    
+    private final ChannelGroup allChannels = new DefaultChannelGroup("AvroNettyTransceiver Channel Group") {
+        AtomicBoolean closed = new AtomicBoolean(false);
+
+        @Override
+        public boolean add(Channel channel) {
+            if (closed.get()) {
+                channel.close();
+                return false;
+            }
+            else {
+                return super.add(channel);
+            }
+        }
+
+        @Override
+        public ChannelGroupFuture close() {
+            closed.set(true);
+            return super.close();
+        }
+    };
 
     AvroNettyTransceiver(String logicalName) {
         channelFactory = null;
@@ -385,6 +410,8 @@ public class AvroNettyTransceiver extends Transceiver {
             disconnect(true, true, null);
         }
         finally {
+            ChannelGroupFuture channelGroupFuture = allChannels.close();
+            channelGroupFuture.awaitUninterruptibly();
             channelFactory.releaseExternalResources();
             eventsLogTimer.cancel();
             eventsLogTimer.purge();
@@ -533,13 +560,14 @@ public class AvroNettyTransceiver extends Transceiver {
         @Override
         public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e)
                 throws Exception {
-            // channel = e.getChannel();
+            allChannels.add(e.getChannel());
             super.channelOpen(ctx, e);
         }
 
         @Override
         public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
             LOG.debug("Channel closed called on " + remoteAddr + " [" + this.logicalName + "]");
+            allChannels.remove(e.getChannel());
             super.channelClosed(ctx, e);
         }
 

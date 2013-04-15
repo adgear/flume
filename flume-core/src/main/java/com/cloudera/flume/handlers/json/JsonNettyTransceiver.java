@@ -22,6 +22,7 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -40,6 +41,9 @@ import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.jboss.netty.channel.group.ChannelGroup;
+import org.jboss.netty.channel.group.ChannelGroupFuture;
+import org.jboss.netty.channel.group.DefaultChannelGroup;
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.jboss.netty.handler.codec.http.DefaultHttpChunk;
 import org.jboss.netty.handler.codec.http.DefaultHttpRequest;
@@ -88,6 +92,27 @@ public class JsonNettyTransceiver {
     private Channel channel; // Synchronized on stateLock
     private final String logicalName;
     private final String uri;
+    
+    private final ChannelGroup allChannels = new DefaultChannelGroup("JsonNettyTransceiver Channel Group") {
+        AtomicBoolean closed = new AtomicBoolean(false);
+
+        @Override
+        public boolean add(Channel channel) {
+            if (closed.get()) {
+                channel.close();
+                return false;
+            }
+            else {
+                return super.add(channel);
+            }
+        }
+
+        @Override
+        public ChannelGroupFuture close() {
+            closed.set(true);
+            return super.close();
+        }
+    };
 
     JsonNettyTransceiver(final String logicalName) {
         channelFactory = null;
@@ -347,7 +372,14 @@ public class JsonNettyTransceiver {
                             nettyRequest.setHeader(HttpHeaders.Names.TRANSFER_ENCODING, HttpHeaders.Values.CHUNKED);
                             nettyRequest.setChunked(true);
 
-                            getChannel().write(nettyRequest);
+                            channelFuture = channel.write(nettyRequest);
+                            channelFuture.awaitUninterruptibly(connectTimeoutMillis);
+                            if (!channelFuture.isSuccess()) {
+                                throw new IOException("Error writing HTTP headers to "
+                                        + remoteAddr + " [" + this.getLogicalName() + "]", channelFuture.getCause());
+                            }
+                            
+                            channelFuture = null;
                         }
                     }
                 }
@@ -422,6 +454,8 @@ public class JsonNettyTransceiver {
             stopping = true;
             disconnect(true, true, null);
         } finally {
+            ChannelGroupFuture channelGroupFuture = allChannels.close();
+            channelGroupFuture.awaitUninterruptibly();
             channelFactory.releaseExternalResources();
             eventsLogTimer.cancel();
             eventsLogTimer.purge();
@@ -488,13 +522,14 @@ public class JsonNettyTransceiver {
         @Override
         public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e)
                 throws Exception {
-            // channel = e.getChannel();
+            allChannels.add(e.getChannel());
             super.channelOpen(ctx, e);
         }
 
         @Override
         public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
             LOG.debug("Channel closed called on " + remoteAddr + " [" + this.logicalName + "]");
+            allChannels.remove(e.getChannel());
             super.channelClosed(ctx, e);
         }
 
